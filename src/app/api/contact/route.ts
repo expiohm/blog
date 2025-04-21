@@ -5,40 +5,40 @@ import ContactFormEmail from "@/emails/ContactFormEmail"
 import nodemailer from "nodemailer"
 
 // Validate environment variables
-const requiredEnvVars = [
-  'ZOHO_EMAIL',
-  'ZOHO_APP_PASSWORD',
-  'RECIPIENT_EMAIL'
-] as const
-
-for (const envVar of requiredEnvVars) {
-  if (!process.env[envVar]) {
-    console.error(`Missing required environment variable: ${envVar}`)
-    throw new Error(`Missing required environment variable: ${envVar}`)
-  }
+const requiredEnvVars = {
+  ZOHO_EMAIL: process.env.ZOHO_EMAIL,
+  ZOHO_APP_PASSWORD: process.env.ZOHO_APP_PASSWORD,
+  RECIPIENT_EMAIL: process.env.RECIPIENT_EMAIL,
 }
 
-// Create transporter with Zoho SMTP
+// Check if any required environment variable is missing
+const missingEnvVars = Object.entries(requiredEnvVars)
+  .filter(([_, value]) => !value)
+  .map(([key]) => key)
+
+if (missingEnvVars.length > 0) {
+  throw new Error(
+    `Missing required environment variables: ${missingEnvVars.join(", ")}`
+  )
+}
+
+// Create transporter using Zoho SMTP
 const transporter = nodemailer.createTransport({
-  host: 'smtp.zoho.com',
+  host: "smtp.zoho.com",
   port: 465,
-  secure: true, // use SSL
+  secure: true,
   auth: {
     user: process.env.ZOHO_EMAIL,
     pass: process.env.ZOHO_APP_PASSWORD,
   },
-  tls: {
-    // Do not fail on invalid certs
-    rejectUnauthorized: false
-  }
 })
 
 // Validate request body
 const contactSchema = z.object({
-  name: z.string().min(2, { message: "Name must be at least 2 characters long" }),
-  email: z.string().email({ message: "Please enter a valid email address" }),
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Invalid email address"),
   phone: z.string().optional(),
-  message: z.string().min(10, { message: "Message must be at least 10 characters long" }),
+  message: z.string().min(10, "Message must be at least 10 characters"),
 })
 
 export async function POST(request: Request) {
@@ -46,20 +46,10 @@ export async function POST(request: Request) {
     console.log('Received contact form submission');
     const body = await request.json();
     
-    // Validate request body
-    const validatedData = contactSchema.safeParse(body);
+    // Validate the request body
+    const validatedData = contactSchema.parse(body);
     
-    if (!validatedData.success) {
-      const errors = validatedData.error.errors.map(err => err.message);
-      return NextResponse.json(
-        { error: 'Invalid form data', details: errors },
-        { status: 400 }
-      );
-    }
-
-    const { name, email, phone, message } = validatedData.data;
-    
-    console.log('Form data:', { name, email, phone: phone || '[Not provided]', message: '[REDACTED]' });
+    console.log('Form data:', { name: validatedData.name, email: validatedData.email, phone: validatedData.phone || '[Not provided]', message: '[REDACTED]' });
 
     // Verify SMTP connection
     try {
@@ -75,18 +65,18 @@ export async function POST(request: Request) {
 
     // Render the email template
     const emailHtml = render(ContactFormEmail({
-      name,
-      email,
-      phone,
-      message
+      name: validatedData.name,
+      email: validatedData.email,
+      phone: validatedData.phone,
+      message: validatedData.message
     }));
 
     // Email content
     const mailOptions = {
-      from: `"${name}" <${process.env.ZOHO_EMAIL}>`,
+      from: process.env.ZOHO_EMAIL,
       to: process.env.RECIPIENT_EMAIL,
-      replyTo: email,
-      subject: `New Contact Form Submission from ${name}`,
+      replyTo: validatedData.email,
+      subject: `New Contact Form Submission from ${validatedData.name}`,
       html: emailHtml,
     };
 
