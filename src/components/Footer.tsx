@@ -1,3 +1,4 @@
+"use client"
 import Link from "next/link"
 import { FacebookIcon, InstagramIcon, TwitterIcon } from "lucide-react"
 
