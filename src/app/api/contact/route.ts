@@ -22,19 +22,15 @@ for (const envVar of requiredEnvVars) {
 const transporter = nodemailer.createTransport({
   host: 'smtp.zoho.com',
   port: 465,
-  secure: true,
+  secure: true, // use SSL
   auth: {
     user: process.env.ZOHO_EMAIL,
     pass: process.env.ZOHO_APP_PASSWORD,
   },
   tls: {
-    rejectUnauthorized: false // Only use this in development
-  },
-  pool: true, // Use connection pooling
-  maxConnections: 5, // Maximum number of connections in the pool
-  maxMessages: 100, // Maximum number of messages per connection
-  rateDelta: 1000, // Time interval in ms for rate limiting
-  rateLimit: 5 // Maximum number of messages per rateDelta
+    // Do not fail on invalid certs
+    rejectUnauthorized: false
+  }
 })
 
 // Validate request body
@@ -65,34 +61,14 @@ export async function POST(request: Request) {
     
     console.log('Form data:', { name, email, phone: phone || '[Not provided]', message: '[REDACTED]' });
 
-    // Verify SMTP connection with retry logic
-    let retryCount = 0;
-    const maxRetries = 3;
-    let lastError = null;
-
-    while (retryCount < maxRetries) {
-      try {
-        await transporter.verify();
-        console.log('SMTP connection verified successfully');
-        break;
-      } catch (error) {
-        lastError = error;
-        console.error(`SMTP connection attempt ${retryCount + 1} failed:`, error);
-        retryCount++;
-        if (retryCount < maxRetries) {
-          console.log(`Retrying in 2 seconds... (${retryCount}/${maxRetries})`);
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-      }
-    }
-
-    if (retryCount === maxRetries) {
-      console.error('All SMTP connection attempts failed:', lastError);
+    // Verify SMTP connection
+    try {
+      await transporter.verify();
+      console.log('SMTP connection verified');
+    } catch (error) {
+      console.error('SMTP connection failed:', error);
       return NextResponse.json(
-        { 
-          error: 'Email service is currently unavailable',
-          details: 'Failed to establish connection with the email server after multiple attempts. Please try again later.'
-        },
+        { error: 'Email service is currently unavailable. Please try again later.' },
         { status: 503 }
       );
     }
@@ -115,32 +91,13 @@ export async function POST(request: Request) {
     };
 
     console.log('Sending email...');
-    // Send email with retry logic
-    retryCount = 0;
-    while (retryCount < maxRetries) {
-      try {
-        const result = await transporter.sendMail(mailOptions);
-        console.log('Email sent successfully:', result.response);
-        return NextResponse.json(
-          { message: 'Email sent successfully' },
-          { status: 200 }
-        );
-      } catch (error) {
-        console.error(`Email sending attempt ${retryCount + 1} failed:`, error);
-        retryCount++;
-        if (retryCount < maxRetries) {
-          console.log(`Retrying in 2 seconds... (${retryCount}/${maxRetries})`);
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-      }
-    }
+    // Send email
+    const result = await transporter.sendMail(mailOptions);
+    console.log('Email sent successfully:', result.response);
 
     return NextResponse.json(
-      { 
-        error: 'Failed to send email',
-        details: 'All attempts to send the email failed. Please try again later.'
-      },
-      { status: 500 }
+      { message: 'Email sent successfully' },
+      { status: 200 }
     );
   } catch (error: unknown) {
     console.error('Error in contact API:', error);
@@ -153,10 +110,7 @@ export async function POST(request: Request) {
     }
     
     return NextResponse.json(
-      { 
-        error: 'An unexpected error occurred',
-        details: 'Please try again later or contact support if the problem persists.'
-      },
+      { error: 'Failed to send email. Please try again later.' },
       { status: 500 }
     );
   }
