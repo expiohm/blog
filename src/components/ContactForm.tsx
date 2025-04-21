@@ -44,7 +44,7 @@ export default function ContactForm() {
           message: data.error || 'Failed to send message. Please try again.',
         });
       }
-    } catch (error: unknown) {
+    } catch (error) {
       console.error('Error submitting form:', error);
       setStatus({
         type: 'error',
