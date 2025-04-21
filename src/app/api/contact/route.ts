@@ -13,7 +13,7 @@ const requiredEnvVars = {
 
 // Check if any required environment variable is missing
 const missingEnvVars = Object.entries(requiredEnvVars)
-  .filter(([_, value]) => !value)
+  .filter(([, value]) => !value)
   .map(([key]) => key)
 
 if (missingEnvVars.length > 0) {
@@ -21,6 +21,14 @@ if (missingEnvVars.length > 0) {
     `Missing required environment variables: ${missingEnvVars.join(", ")}`
   )
 }
+
+// Log SMTP configuration (without sensitive data)
+console.log('SMTP Configuration:')
+console.log('Host: smtp.zoho.com')
+console.log('Port: 465')
+console.log('User:', process.env.ZOHO_EMAIL ? 'Set' : 'Not Set')
+console.log('Password:', process.env.ZOHO_APP_PASSWORD ? 'Set' : 'Not Set')
+console.log('Recipient:', process.env.RECIPIENT_EMAIL)
 
 // Create transporter using Zoho SMTP
 const transporter = nodemailer.createTransport({
@@ -41,6 +49,11 @@ const contactSchema = z.object({
   message: z.string().min(10, "Message must be at least 10 characters"),
 })
 
+interface SMTPError extends Error {
+  code?: string;
+  response?: string;
+}
+
 export async function POST(request: Request) {
   try {
     console.log('Received contact form submission');
@@ -57,6 +70,14 @@ export async function POST(request: Request) {
       console.log('SMTP connection verified');
     } catch (error) {
       console.error('SMTP connection failed:', error);
+      if (error instanceof Error) {
+        const smtpError = error as SMTPError;
+        console.error('Error details:', {
+          message: smtpError.message,
+          code: smtpError.code,
+          response: smtpError.response,
+        });
+      }
       return NextResponse.json(
         { error: 'Email service is currently unavailable. Please try again later.' },
         { status: 503 }
@@ -97,6 +118,15 @@ export async function POST(request: Request) {
         { error: 'Invalid form data. Please check your input.' },
         { status: 400 }
       );
+    }
+    
+    if (error instanceof Error) {
+      const smtpError = error as SMTPError;
+      console.error('Error details:', {
+        message: smtpError.message,
+        code: smtpError.code,
+        response: smtpError.response,
+      });
     }
     
     return NextResponse.json(
